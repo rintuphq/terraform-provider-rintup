@@ -1,0 +1,10 @@
+# build output
+/terraform-provider-rintup
+/terraform-provider-rintup.exe
+/dist/
+# local Terraform runs of the examples
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+/bin/

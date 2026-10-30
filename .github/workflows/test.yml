@@ -1,0 +1,65 @@
+# Build, vet and test on every push and pull request.
+# The acceptance job runs only when the RINTUP_API_KEY secret exists (it is not available to
+# pull requests from forks, so they skip it). Optional repository variable: RINTUP_BASE_URL.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.11.*"
+          terraform_wrapper: false
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./... # provider tests drive the Terraform CLI against an in-memory fake API
+      - name: docs/ is up to date
+        run: |
+          go generate ./...
+          git diff --exit-code -- docs/ || { echo "docs/ is stale: run 'go generate ./...' and commit"; exit 1; }
+
+  acceptance:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: acceptance # the tests share one workspace
+    env:
+      HAS_KEY: ${{ secrets.RINTUP_API_KEY != '' }}
+    steps:
+      - name: Skip without RINTUP_API_KEY
+        if: env.HAS_KEY != 'true'
+        run: echo "RINTUP_API_KEY secret not set; acceptance tests skipped."
+      - uses: actions/checkout@v7
+        if: env.HAS_KEY == 'true'
+      - uses: actions/setup-go@v6
+        if: env.HAS_KEY == 'true'
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@v3
+        if: env.HAS_KEY == 'true'
+        with:
+          terraform_version: "1.11.*"
+          terraform_wrapper: false
+      - name: Acceptance tests
+        if: env.HAS_KEY == 'true'
+        run: go test ./internal/provider -run TestAcc -v -timeout 25m
+        env:
+          TF_ACC: "1"
+          RINTUP_API_KEY: ${{ secrets.RINTUP_API_KEY }}
+          RINTUP_BASE_URL: ${{ vars.RINTUP_BASE_URL || 'https://rintup.com/api/v1' }}
