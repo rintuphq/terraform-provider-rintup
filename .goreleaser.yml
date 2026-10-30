@@ -19,6 +19,9 @@ builds:
     ignore:
       - goos: darwin
         goarch: "386"
+      # Go no longer supports 32-bit Windows on ARM.
+      - goos: windows
+        goarch: arm
     binary: "{{ .ProjectName }}_v{{ .Version }}"
 
 archives:
